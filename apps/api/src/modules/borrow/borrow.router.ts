@@ -1,7 +1,248 @@
 import { Router } from 'express';
 import type { Router as IRouter } from 'express';
+import { requireAuth, requireRole } from '../../middleware/auth.js';
+import { AppError } from '../../middleware/error-handler.js';
+import { prisma } from '../../lib/prisma.js';
+import {
+  borrowRequestSchema,
+  approveSchema,
+  returnSchema,
+  rejectSchema,
+  cancelSchema,
+} from '@spare-part/shared';
+import type { Prisma } from '@prisma/client';
 
 export const borrowRouter: IRouter = Router();
 
-// Implemented in Phase 5
-borrowRouter.get('/', (_req, res) => res.status(501).json({ message: 'Coming in Phase 5' }));
+borrowRouter.use(requireAuth);
+
+const borrowInclude = {
+  sparePart: { include: { site: true, equipmentType: true, brand: true } },
+  borrower: { select: { id: true, name: true, email: true, role: true } },
+  approver: { select: { id: true, name: true, email: true } },
+} satisfies Prisma.BorrowTransactionInclude;
+
+// GET /api/borrow
+borrowRouter.get('/', async (req, res, next) => {
+  try {
+    const {
+      status,
+      borrowerId,
+      sparePartId,
+      page = '1',
+      limit = '20',
+    } = req.query as Record<string, string>;
+    const p = Math.max(1, parseInt(page));
+    const l = Math.min(100, Math.max(1, parseInt(limit)));
+
+    const where: Prisma.BorrowTransactionWhereInput = {
+      ...(status && { status: status as Prisma.EnumBorrowStatusFilter }),
+      ...(borrowerId && { borrowerId }),
+      ...(sparePartId && { sparePartId }),
+    };
+
+    const [data, total] = await Promise.all([
+      prisma.borrowTransaction.findMany({
+        where,
+        include: borrowInclude,
+        orderBy: { createdAt: 'desc' },
+        skip: (p - 1) * l,
+        take: l,
+      }),
+      prisma.borrowTransaction.count({ where }),
+    ]);
+
+    res.json({ data, meta: { page: p, limit: l, total, totalPages: Math.ceil(total / l) } });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// GET /api/borrow/:id
+borrowRouter.get('/:id', async (req, res, next) => {
+  try {
+    const id = req.params.id as string;
+    const tx = await prisma.borrowTransaction.findUnique({ where: { id }, include: borrowInclude });
+    if (!tx) throw new AppError(404, 'NOT_FOUND', 'Borrow transaction not found');
+    res.json(tx);
+  } catch (err) {
+    next(err);
+  }
+});
+
+// POST /api/borrow — ADMIN, MANAGER, TECHNICIAN
+borrowRouter.post('/', requireRole('ADMIN', 'MANAGER', 'TECHNICIAN'), async (req, res, next) => {
+  try {
+    const parsed = borrowRequestSchema.safeParse(req.body);
+    if (!parsed.success)
+      throw new AppError(400, 'VALIDATION_ERROR', 'Invalid input', parsed.error.issues);
+
+    const part = await prisma.sparePart.findUnique({ where: { id: parsed.data.sparePartId } });
+    if (!part) throw new AppError(404, 'NOT_FOUND', 'Spare part not found');
+    if (part.quantity < 1)
+      throw new AppError(409, 'INSUFFICIENT_STOCK', 'No stock available to borrow');
+
+    const active = await prisma.borrowTransaction.findFirst({
+      where: { sparePartId: parsed.data.sparePartId, status: { in: ['PENDING', 'APPROVED'] } },
+    });
+    if (active)
+      throw new AppError(409, 'CONFLICT', 'This item already has an active borrow request');
+
+    const tx = await prisma.borrowTransaction.create({
+      data: {
+        sparePartId: parsed.data.sparePartId,
+        borrowerId: req.user!.id,
+        project: parsed.data.project,
+        dateStart: parsed.data.dateStart ? new Date(parsed.data.dateStart) : null,
+        expectedReturn: parsed.data.expectedReturn ? new Date(parsed.data.expectedReturn) : null,
+        borrowerRemark: parsed.data.borrowerRemark,
+        status: 'PENDING',
+      },
+      include: borrowInclude,
+    });
+
+    res.status(201).json(tx);
+  } catch (err) {
+    next(err);
+  }
+});
+
+// PATCH /api/borrow/:id/approve — ADMIN, MANAGER
+borrowRouter.patch('/:id/approve', requireRole('ADMIN', 'MANAGER'), async (req, res, next) => {
+  try {
+    const id = req.params.id as string;
+    const parsed = approveSchema.safeParse(req.body);
+    if (!parsed.success)
+      throw new AppError(400, 'VALIDATION_ERROR', 'Invalid input', parsed.error.issues);
+
+    const tx = await prisma.borrowTransaction.findUnique({ where: { id } });
+    if (!tx) throw new AppError(404, 'NOT_FOUND', 'Borrow transaction not found');
+    if (tx.status !== 'PENDING')
+      throw new AppError(
+        409,
+        'CONFLICT',
+        `Cannot approve a transaction with status "${tx.status}"`
+      );
+
+    const [updated] = await prisma.$transaction([
+      prisma.borrowTransaction.update({
+        where: { id },
+        data: {
+          status: 'APPROVED',
+          approverId: req.user!.id,
+          approverRemark: parsed.data.approverRemark,
+        },
+        include: borrowInclude,
+      }),
+      prisma.sparePart.update({
+        where: { id: tx.sparePartId },
+        data: { status: 'BORROWED', quantity: { decrement: 1 } },
+      }),
+    ]);
+
+    res.json(updated);
+  } catch (err) {
+    next(err);
+  }
+});
+
+// PATCH /api/borrow/:id/reject — ADMIN, MANAGER
+borrowRouter.patch('/:id/reject', requireRole('ADMIN', 'MANAGER'), async (req, res, next) => {
+  try {
+    const id = req.params.id as string;
+    const parsed = rejectSchema.safeParse(req.body);
+    if (!parsed.success)
+      throw new AppError(400, 'VALIDATION_ERROR', 'Invalid input', parsed.error.issues);
+
+    const tx = await prisma.borrowTransaction.findUnique({ where: { id } });
+    if (!tx) throw new AppError(404, 'NOT_FOUND', 'Borrow transaction not found');
+    if (tx.status !== 'PENDING')
+      throw new AppError(409, 'CONFLICT', `Cannot reject a transaction with status "${tx.status}"`);
+
+    const updated = await prisma.borrowTransaction.update({
+      where: { id },
+      data: {
+        status: 'REJECTED',
+        approverId: req.user!.id,
+        approverRemark: parsed.data.approverRemark,
+      },
+      include: borrowInclude,
+    });
+
+    res.json(updated);
+  } catch (err) {
+    next(err);
+  }
+});
+
+// PATCH /api/borrow/:id/return
+borrowRouter.patch('/:id/return', async (req, res, next) => {
+  try {
+    const id = req.params.id as string;
+    const parsed = returnSchema.safeParse(req.body);
+    if (!parsed.success)
+      throw new AppError(400, 'VALIDATION_ERROR', 'Invalid input', parsed.error.issues);
+
+    const tx = await prisma.borrowTransaction.findUnique({ where: { id } });
+    if (!tx) throw new AppError(404, 'NOT_FOUND', 'Borrow transaction not found');
+    if (tx.status !== 'APPROVED')
+      throw new AppError(409, 'CONFLICT', `Cannot return a transaction with status "${tx.status}"`);
+
+    // only borrower or manager/admin can return
+    const user = req.user!;
+    if (user.role === 'TECHNICIAN' && tx.borrowerId !== user.id)
+      throw new AppError(403, 'FORBIDDEN', 'You can only return your own borrows');
+
+    const [updated] = await prisma.$transaction([
+      prisma.borrowTransaction.update({
+        where: { id },
+        data: {
+          status: 'RETURNED',
+          actualReturn: new Date(parsed.data.actualReturn),
+          borrowerRemark: parsed.data.borrowerRemark ?? tx.borrowerRemark,
+        },
+        include: borrowInclude,
+      }),
+      prisma.sparePart.update({
+        where: { id: tx.sparePartId },
+        data: { status: 'IN_STOCK', quantity: { increment: 1 } },
+      }),
+    ]);
+
+    res.json(updated);
+  } catch (err) {
+    next(err);
+  }
+});
+
+// PATCH /api/borrow/:id/cancel
+borrowRouter.patch('/:id/cancel', async (req, res, next) => {
+  try {
+    const id = req.params.id as string;
+    const parsed = cancelSchema.safeParse(req.body);
+    if (!parsed.success)
+      throw new AppError(400, 'VALIDATION_ERROR', 'Invalid input', parsed.error.issues);
+
+    const tx = await prisma.borrowTransaction.findUnique({ where: { id } });
+    if (!tx) throw new AppError(404, 'NOT_FOUND', 'Borrow transaction not found');
+    if (tx.status !== 'PENDING')
+      throw new AppError(409, 'CONFLICT', `Cannot cancel a transaction with status "${tx.status}"`);
+
+    const user = req.user!;
+    if (user.role === 'TECHNICIAN' && tx.borrowerId !== user.id)
+      throw new AppError(403, 'FORBIDDEN', 'You can only cancel your own requests');
+
+    const updated = await prisma.borrowTransaction.update({
+      where: { id },
+      data: {
+        status: 'CANCELLED',
+        borrowerRemark: parsed.data.borrowerRemark ?? tx.borrowerRemark,
+      },
+      include: borrowInclude,
+    });
+
+    res.json(updated);
+  } catch (err) {
+    next(err);
+  }
+});

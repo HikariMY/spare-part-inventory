@@ -1,0 +1,89 @@
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { toast } from 'sonner';
+import { borrowApi, type BorrowFilters } from './api';
+import type { BorrowRequestInput } from '@spare-part/shared';
+
+export const BORROW_KEY = ['borrow'] as const;
+
+export function useBorrows(filters: BorrowFilters = {}) {
+  return useQuery({
+    queryKey: [...BORROW_KEY, filters],
+    queryFn: () => borrowApi.list(filters).then((r) => r.data),
+  });
+}
+
+export function useCreateBorrow() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (data: BorrowRequestInput) => borrowApi.create(data).then((r) => r.data),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: BORROW_KEY });
+      toast.success('ส่งคำขอยืมสำเร็จ — รอการอนุมัติ');
+    },
+    onError: (err: { response?: { data?: { message?: string } } }) =>
+      toast.error(err.response?.data?.message ?? 'เกิดข้อผิดพลาด'),
+  });
+}
+
+export function useApproveBorrow() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, remark }: { id: string; remark?: string }) =>
+      borrowApi.approve(id, { approverRemark: remark }).then((r) => r.data),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: BORROW_KEY });
+      toast.success('อนุมัติสำเร็จ');
+    },
+    onError: (err: { response?: { data?: { message?: string } } }) =>
+      toast.error(err.response?.data?.message ?? 'เกิดข้อผิดพลาด'),
+  });
+}
+
+export function useRejectBorrow() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, remark }: { id: string; remark?: string }) =>
+      borrowApi.reject(id, { approverRemark: remark }).then((r) => r.data),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: BORROW_KEY });
+      toast.success('ปฏิเสธคำขอแล้ว');
+    },
+    onError: (err: { response?: { data?: { message?: string } } }) =>
+      toast.error(err.response?.data?.message ?? 'เกิดข้อผิดพลาด'),
+  });
+}
+
+export function useReturnBorrow() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      id,
+      actualReturn,
+      remark,
+    }: {
+      id: string;
+      actualReturn: string;
+      remark?: string;
+    }) => borrowApi.return(id, { actualReturn, borrowerRemark: remark }).then((r) => r.data),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: BORROW_KEY });
+      qc.invalidateQueries({ queryKey: ['spare-parts'] });
+      toast.success('คืนของสำเร็จ');
+    },
+    onError: (err: { response?: { data?: { message?: string } } }) =>
+      toast.error(err.response?.data?.message ?? 'เกิดข้อผิดพลาด'),
+  });
+}
+
+export function useCancelBorrow() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => borrowApi.cancel(id).then((r) => r.data),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: BORROW_KEY });
+      toast.success('ยกเลิกคำขอแล้ว');
+    },
+    onError: (err: { response?: { data?: { message?: string } } }) =>
+      toast.error(err.response?.data?.message ?? 'เกิดข้อผิดพลาด'),
+  });
+}

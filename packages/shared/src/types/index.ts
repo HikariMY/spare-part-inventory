@@ -91,8 +91,12 @@ export interface SparePart {
 
 export interface BorrowTransaction {
   id: string;
-  sparePart: Pick<SparePart, 'id' | 'modelCode' | 'productName'>;
-  borrower: Pick<User, 'id' | 'name' | 'email'>;
+  sparePart: Pick<SparePart, 'id' | 'modelCode' | 'productName'> & {
+    site: Pick<Site, 'id' | 'code' | 'name'>;
+    equipmentType: Pick<EquipmentType, 'id' | 'code'>;
+    brand: Pick<Brand, 'id' | 'name'>;
+  };
+  borrower: Pick<User, 'id' | 'name' | 'email' | 'role'>;
   approver?: Pick<User, 'id' | 'name'> | null;
   status: BorrowStatus;
   project?: string | null;

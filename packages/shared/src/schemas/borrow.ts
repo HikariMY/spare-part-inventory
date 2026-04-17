@@ -18,3 +18,11 @@ export const returnSchema = z.object({
   actualReturn: z.string().datetime(),
   borrowerRemark: z.string().optional(),
 });
+
+export const rejectSchema = z.object({
+  approverRemark: z.string().optional(),
+});
+
+export const cancelSchema = z.object({
+  borrowerRemark: z.string().optional(),
+});

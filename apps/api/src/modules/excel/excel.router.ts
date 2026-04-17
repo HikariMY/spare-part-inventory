@@ -225,7 +225,7 @@ excelRouter.post(
               const up = await prisma.sparePart.update({
                 where: { id: existing.id },
                 data: {
-                  siteId: sheetSiteId,
+                  // Don't overwrite siteId — first sheet to create the item owns the site
                   equipmentTypeId: equipmentType.id,
                   brandId: brand.id,
                   materialCode,

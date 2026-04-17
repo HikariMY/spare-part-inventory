@@ -69,6 +69,7 @@ model Site {
   description String?
   address     String?
   isActive    Boolean  @default(true)
+  sortOrder   Int      @default(99)
   createdAt   DateTime @default(now())
 
   spareParts       SparePart[]

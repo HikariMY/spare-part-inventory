@@ -12,7 +12,7 @@ sitesRouter.use(requireAuth);
 // GET /api/sites — all authenticated roles
 sitesRouter.get('/', async (_req, res, next) => {
   try {
-    const sites = await prisma.site.findMany({ orderBy: { code: 'asc' } });
+    const sites = await prisma.site.findMany({ orderBy: [{ sortOrder: 'asc' }, { code: 'asc' }] });
     res.json(sites);
   } catch (err) {
     next(err);

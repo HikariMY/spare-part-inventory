@@ -197,26 +197,22 @@ excelRouter.post(
           const remark = String(cv(row, colMap.remark) ?? '').trim() || null;
 
           try {
-            // Upsert equipment type by code
-            if (!typeCode) {
-              skipped++;
-              continue;
-            }
-            let equipmentType = await prisma.equipmentType.findFirst({ where: { code: typeCode } });
+            // Upsert equipment type by code (default to "Unknown" if blank)
+            const resolvedTypeCode = typeCode || 'Unknown';
+            let equipmentType = await prisma.equipmentType.findFirst({
+              where: { code: resolvedTypeCode },
+            });
             if (!equipmentType) {
               equipmentType = await prisma.equipmentType.create({
-                data: { code: typeCode, name: typeCode, category: 'Imported' },
+                data: { code: resolvedTypeCode, name: resolvedTypeCode, category: 'Imported' },
               });
             }
 
-            // Upsert brand by name
-            if (!brandName) {
-              skipped++;
-              continue;
-            }
-            let brand = await prisma.brand.findFirst({ where: { name: brandName } });
+            // Upsert brand by name (default to "Unknown" if blank)
+            const resolvedBrandName = brandName || 'Unknown';
+            let brand = await prisma.brand.findFirst({ where: { name: resolvedBrandName } });
             if (!brand) {
-              brand = await prisma.brand.create({ data: { name: brandName } });
+              brand = await prisma.brand.create({ data: { name: resolvedBrandName } });
             }
 
             // Check if exists by serialNumber

@@ -65,16 +65,18 @@ excelRouter.post(
       for (const ws of wb.worksheets) {
         if (!ws.name.toLowerCase().startsWith('spare parts')) continue;
 
-        // Auto-map sheet name → site (e.g. "Spare Parts KIS" → KIS site)
+        // Auto-map sheet name → site
+        // "Spare Parts All" → always BKK; "Spare Parts KIS" → KIS, etc.
         let sheetSiteId = siteId;
         const sheetSuffix = ws.name.replace(/spare parts\s*/i, '').trim();
         const englishKeyword = sheetSuffix.match(/[A-Za-z_]+/)?.[0];
-        if (englishKeyword && englishKeyword.toLowerCase() !== 'all') {
+        if (englishKeyword) {
+          const keyword = englishKeyword.toLowerCase() === 'all' ? 'BKK' : englishKeyword;
           const matched = await prisma.site.findFirst({
             where: {
               OR: [
-                { code: { contains: englishKeyword, mode: 'insensitive' } },
-                { name: { contains: englishKeyword, mode: 'insensitive' } },
+                { code: { contains: keyword, mode: 'insensitive' } },
+                { name: { contains: keyword, mode: 'insensitive' } },
               ],
             },
           });
@@ -110,6 +112,8 @@ excelRouter.post(
           else if (v === 'brand' || v.startsWith('brand')) colMap.brand = col;
           else if (v.includes('material')) colMap.materialCode = col;
           else if (v.includes('code') && v.includes('model')) colMap.modelCode = col;
+          else if (v === 'code')
+            colMap.code = col; // REIGNWOOD uses plain "Code" column
           else if (v.includes('product name')) colMap.productName = col;
           else if (v === 'qty') colMap.qty = col;
           else if (v.includes('cost')) colMap.cost = col;
@@ -122,7 +126,7 @@ excelRouter.post(
           else if (v === 'project') colMap.borrowProject = col;
         });
 
-        if (!colMap.productName) continue;
+        if (!colMap.productName && !colMap.code) continue;
 
         // Unwrap formula cells: ExcelJS returns { formula, result } for formula cells
         const cv = (row: ExcelJS.Row, col: number | undefined): unknown => {
@@ -134,7 +138,9 @@ excelRouter.post(
 
         for (let r = headerRow + 1; r <= ws.rowCount; r++) {
           const row = ws.getRow(r);
-          const productName = String(cv(row, colMap.productName) ?? '').trim();
+          // productName: prefer PRODUCT NAME col, fall back to plain Code col (REIGNWOOD format)
+          const codeColVal = String(cv(row, colMap.code) ?? '').trim();
+          const productName = String(cv(row, colMap.productName) ?? '').trim() || codeColVal;
           if (!productName) {
             skipped++;
             continue;
@@ -144,7 +150,9 @@ excelRouter.post(
           const brandName = String(cv(row, colMap.brand) ?? '').trim();
           const materialCode = String(cv(row, colMap.materialCode) ?? '').trim() || null;
           const modelCode =
-            String(cv(row, colMap.modelCode) ?? '').trim() || productName.slice(0, 50);
+            String(cv(row, colMap.modelCode) ?? '').trim() ||
+            codeColVal ||
+            productName.slice(0, 50);
           const qtyRaw = cv(row, colMap.qty);
           const quantity =
             typeof qtyRaw === 'number' ? qtyRaw : parseInt(String(qtyRaw ?? '1')) || 1;

@@ -7,6 +7,8 @@ import { rateLimit } from 'express-rate-limit';
 import { errorHandler } from './middleware/error-handler.js';
 import { authRouter } from './modules/auth/auth.router.js';
 import { sitesRouter } from './modules/sites/sites.router.js';
+import { equipmentTypesRouter } from './modules/equipment-types/equipment-types.router.js';
+import { brandsRouter } from './modules/brands/brands.router.js';
 import { inventoryRouter } from './modules/inventory/inventory.router.js';
 import { borrowRouter } from './modules/borrow/borrow.router.js';
 import { excelRouter } from './modules/excel/excel.router.js';
@@ -42,6 +44,8 @@ app.use(morgan(process.env.NODE_ENV === 'production' ? 'combined' : 'dev'));
 // Routes
 app.use('/api/auth', authRouter);
 app.use('/api/sites', sitesRouter);
+app.use('/api/equipment-types', equipmentTypesRouter);
+app.use('/api/brands', brandsRouter);
 app.use('/api/spare-parts', inventoryRouter);
 app.use('/api/borrow', borrowRouter);
 app.use('/api/excel', excelRouter);

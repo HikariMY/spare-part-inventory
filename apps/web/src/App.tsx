@@ -7,6 +7,7 @@ import { ProtectedRoute } from '@/components/ProtectedRoute';
 import { AppLayout } from '@/components/AppLayout';
 import { DashboardPage } from '@/pages/DashboardPage';
 import { ProfilePage } from '@/pages/ProfilePage';
+import { SettingsPage } from '@/pages/SettingsPage';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -54,7 +55,7 @@ function App() {
                 path="/settings/*"
                 element={
                   <ProtectedRoute roles={['ADMIN']}>
-                    <div className="p-6 text-muted-foreground">Settings — Phase 3</div>
+                    <SettingsPage />
                   </ProtectedRoute>
                 }
               />

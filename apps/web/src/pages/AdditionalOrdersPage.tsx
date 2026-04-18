@@ -9,7 +9,6 @@ import {
   Clock,
   XCircle,
   PackageCheck,
-  ImageIcon,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -90,6 +89,34 @@ function StatusBadge({ status }: { status: AdditionalOrder['status'] }) {
   );
 }
 
+function ThumbnailCell({
+  orderId,
+  productName,
+  onExpand,
+}: {
+  orderId: string;
+  productName: string;
+  onExpand: () => void;
+}) {
+  const { data: imageData, isLoading } = useOrderImage(orderId);
+
+  if (isLoading) {
+    return <div className="h-10 w-14 animate-pulse rounded bg-gray-200" />;
+  }
+  if (!imageData) {
+    return <span className="text-xs text-muted-foreground">—</span>;
+  }
+  return (
+    <button onClick={onExpand} className="focus:outline-none" title="คลิกดูรูปขนาดใหญ่">
+      <img
+        src={imageData}
+        alt={productName}
+        className="h-10 w-14 cursor-pointer rounded border object-contain transition-opacity hover:opacity-75"
+      />
+    </button>
+  );
+}
+
 function ImagePreviewDialog({
   orderId,
   productName,
@@ -115,7 +142,7 @@ function ImagePreviewDialog({
             <img
               src={imageData}
               alt={productName}
-              className="max-h-96 max-w-full rounded object-contain"
+              className="max-h-[70vh] max-w-full rounded object-contain"
             />
           ) : (
             <p className="text-sm text-muted-foreground">ไม่พบรูปภาพ</p>
@@ -243,7 +270,7 @@ export function AdditionalOrdersPage() {
               <TableHead className="text-right">Total Cost</TableHead>
               <TableHead>Status</TableHead>
               <TableHead>Remark</TableHead>
-              <TableHead className="w-12 text-center">รูป</TableHead>
+              <TableHead className="w-16 text-center">รูป</TableHead>
               {canEdit && <TableHead className="w-16 text-center">จัดการ</TableHead>}
             </TableRow>
           </TableHeader>
@@ -308,16 +335,13 @@ export function AdditionalOrdersPage() {
                   </TableCell>
                   <TableCell className="text-center">
                     {order.hasImage ? (
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-7 w-7 text-blue-500 hover:bg-blue-50"
-                        onClick={() =>
+                      <ThumbnailCell
+                        orderId={order.id}
+                        productName={order.productName}
+                        onExpand={() =>
                           setImagePreview({ id: order.id, productName: order.productName })
                         }
-                      >
-                        <ImageIcon className="h-3.5 w-3.5" />
-                      </Button>
+                      />
                     ) : (
                       <span className="text-xs text-muted-foreground">—</span>
                     )}

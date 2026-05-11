@@ -8,7 +8,11 @@
       "PowerShell(pnpm --version)",
       "PowerShell(npm install -g pnpm@9 2>&1)",
       "Bash(Get-Content \"C:\\\\Users\\\\piramid\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\d--spare-part-inventory\\\\3d1bacc2-e5c7-49d1-89c0-70f76b4bcdde\\\\tasks\\\\b60jgakdz.output\" -Wait)",
-      "Bash(Select-String --line-buffered \".\")"
+      "Bash(Select-String --line-buffered \".\")",
+      "Bash(Get-ChildItem -Path d:\\\\spare-part-inventory -Recurse -Force)",
+      "Bash(Select-Object FullName)",
+      "Bash(Get-ChildItem -Path d:\\\\spare-part-inventory -Directory)",
+      "Bash(Select-Object Name)"
     ]
   }
 }

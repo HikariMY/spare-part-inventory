@@ -1,6 +1,10 @@
 import type { Request, Response, NextFunction } from 'express';
 import { ZodError } from 'zod';
-import { PrismaClientKnownRequestError } from '@prisma/client/runtime/library';
+import {
+  PrismaClientKnownRequestError,
+  PrismaClientInitializationError,
+  PrismaClientRustPanicError,
+} from '@prisma/client/runtime/library';
 
 export class AppError extends Error {
   constructor(
@@ -47,8 +51,23 @@ export function errorHandler(
       res.status(404).json({ error: 'NOT_FOUND', message: 'Record not found' });
       return;
     }
+    console.error('[Prisma] Known error:', err.code, err.message);
+    res.status(500).json({ error: 'DB_ERROR', message: `Database error: ${err.code}` });
+    return;
   }
 
-  console.error(err);
+  if (err instanceof PrismaClientInitializationError) {
+    console.error('[Prisma] Initialization error:', err.message);
+    res.status(503).json({ error: 'DB_UNAVAILABLE', message: 'Database connection failed' });
+    return;
+  }
+
+  if (err instanceof PrismaClientRustPanicError) {
+    console.error('[Prisma] Rust panic:', err.message);
+    res.status(500).json({ error: 'DB_PANIC', message: 'Database engine error' });
+    return;
+  }
+
+  console.error('[Unhandled]', err);
   res.status(500).json({ error: 'INTERNAL_ERROR', message: 'Internal server error' });
 }

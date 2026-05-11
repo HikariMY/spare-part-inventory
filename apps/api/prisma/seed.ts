@@ -107,7 +107,20 @@ async function main() {
       passwordHash,
     },
   });
-  console.info('✓ Admin user seeded');
+
+  const wPasswordHash = await bcrypt.hash('12345678', 12);
+  await prisma.user.upsert({
+    where: { email: 'w@gmail.com' },
+    update: { passwordHash: wPasswordHash },
+    create: {
+      email: 'w@gmail.com',
+      name: 'W Admin',
+      role: 'ADMIN',
+      isActive: true,
+      passwordHash: wPasswordHash,
+    },
+  });
+  console.info('✓ Admin users seeded');
 
   console.info('✅ Seed complete');
 }
